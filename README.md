@@ -1,2 +1,3 @@
-# rllr-bot
-Reinforcement Learning Light Riders Bot
+# RLLR Bot
+
+> Reinforcement Learning Light Riders Bot
