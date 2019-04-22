@@ -1,187 +1,134 @@
-from Bot.grid import Grid
+from Bot.grid import LRGrid
 import numpy as np
 import sys
 
-
-def getValidActions(state, x, y, rows, cols):
-    possible_actions = []
-    if (x + 1) < rows and (state[x + 1, y] == '.'):
-        possible_actions.append('down')
-    if (x - 1) >= 0 and (state[x - 1, y] == '.'):
-        possible_actions.append('up')
-    if (y + 1) < cols and (state[x, y + 1] == '.'):
-        possible_actions.append('right')
-    if (y - 1) >= 0 and (state[x, y - 1] == '.'):
-        possible_actions.append('left')
-    return possible_actions
+GAMMA = 0.9
+ALL_POSSIBLE_ACTIONS = ('up', 'down', 'left', 'right')
 
 
-def isOutside(state, x, y, rows, cols):
-    if x < 0 or x >= rows or y < 0 or y >= cols:
-        return True
-    return False
+def max_dict(d):
+    # returns the argmax (key) and max (value) from a dictionary
+    # put this into a function since we are using it so often
+    max_key = None
+    max_val = float('-inf')
+    for k, v in d.items():
+        if v > max_val:
+            max_val = v
+            max_key = k
+    return max_key, max_val
 
 
-def isWall(state, x, y, rows, cols):
-    if isOutside(state, x, y, rows, cols):
-        return False
-    if state[x, y] == 'x':
-        return True
-    return False
+def random_action(a, eps=0.5):
+    # choose given a with probability 1 - eps + eps/4
+    # choose some other a' != a with probability eps/4
+    p = np.random.random()
+    # if p < (1 - eps + eps/len(ALL_POSSIBLE_ACTIONS)):
+    #   return a
+    # else:
+    #   tmp = list(ALL_POSSIBLE_ACTIONS)
+    #   tmp.remove(a)
+    #   return np.random.choice(tmp)
+    #
+    # this is equivalent to the above
+    if p < (1 - eps):
+        return a
+    else:
+        return np.random.choice(ALL_POSSIBLE_ACTIONS)
 
 
-def getReward(state, x, y, rows, cols):
-    reward = -0.1
-    if isWall(state, x, y, rows, cols):
-        # this is a wall
-        reward -= 5
-    if isOutside(state, x + 1, y, rows, cols):
-        reward -= 0.1
-    if isOutside(state, x - 1, y, rows, cols):
-        reward -= 0.1
-    if isOutside(state, x, y + 1, rows, cols):
-        reward -= 0.1
-    if isOutside(state, x, y - 1, rows, cols):
-        reward -= 0.1
-    if isWall(state, x + 1, y, rows, cols):
-        reward -= 0.5
-    if isWall(state, x - 1, y, rows, cols):
-        reward -= 0.5
-    if isWall(state, x, y + 1, rows, cols):
-        reward -= 0.5
-    if isWall(state, x, y - 1, rows, cols):
-        reward -= 0.5
-    return reward
+def play_game(grid, policy):
+    # returns a list of states and corresponding returns
+    # in this version we will NOT use "exploring starts" method
+    # instead we will explore using an epsilon-soft policy
+    s = grid.current_state()
+    a = random_action(policy[s])
 
-
-def stateToGrid(stateDate, rows, cols, my_bot_id, enemy_bot_id):
-    state_arr = stateDate.split(",")
-    state = np.array(state_arr).reshape(rows, cols)
-    my_bot_pos = np.argwhere(state == my_bot_id)[0]
-    enemy_bot_pos = np.argwhere(state == enemy_bot_id)[0]
-    g = Grid(rows, cols, my_bot_pos)
-    actions = {}
-    rewards = {}
-    for x in range(rows):
-        for y in range(cols):
-            rewards.update({(x, y): getReward(state, x, y, rows, cols)})
-            actions_valid = getValidActions(state, x, y, rows, cols)
-            # print(x,y,actions_valid)
-            if (len(actions_valid) > 0) and (state[x, y] in ['.', str(my_bot_id)]):
-                actions.update({(x, y): actions_valid})
-            elif len(actions_valid) == 0 and (state[x, y] in ['.']):
-                rewards.update({(x, y): -10})
-
-    g.set(rewards, actions)
-    return g
-
-
-def print_values(V, g):
-    sys.stderr.write("\nVALUES\n")
-    for i in range(g.rows):
-        sys.stderr.write("------------------------------\n")
-        for j in range(g.cols):
-            v = V.get((i, j), 0)
-            if v >= 0:
-                sys.stderr.write(" %.2f|" % v)
-            else:
-                sys.stderr.write("%.2f|" % v)  # -ve sign takes up an extra space
-        sys.stderr.write("\n")
-        sys.stderr.flush()
-
-
-def print_policy(P, g):
-    sys.stderr.write("\nPOLICY\n")
-    for i in range(g.rows):
-        sys.stderr.write("------------------------------\n")
-        for j in range(g.cols):
-            a = P.get((i, j), ' ')
-            sys.stderr.write(a.center(7) + " |")
-        sys.stderr.write("\n")
-        sys.stderr.flush()
-
-
-def gameToGrid(game):
-    return stateToGrid(game.field_data, game.field_height, game.field_width, str(game.my_botid),
-                       str(game.other_botid))
-
-
-def gridToPolicy(grid):
-    SMALL_ENOUGH = 1e-2
-    GAMMA = 0.9
-    # state -> action
-    # we'll randomly choose an action and update as we learn
-    policy = {}
-    for s in grid.actions.keys():
-        policy[s] = np.random.choice(grid.actions[s])
-
-    # initial policy
-    # print("initial policy:")
-    print_policy(policy, grid)
-
-    # initialize V(s)
-    states = grid.all_states()
-
-    ### uniformly random actions ###
-    # initialize V(s) = 0
-    SMALL_ENOUGH = 5e-1  # threshold for convergence
-    V = {}
-    for s in states:
-        V[s] = 0
-        gamma = 1.0  # discount factor
-    # repeat until convergence
-    runs = 0
-    while runs < 5:
-        biggest_change = 0
-        for s in states:
-            old_v = V[s]
-            # V(s) only has value if it's not a terminal state
-            if s in grid.actions:
-
-                new_v = 0  # we will accumulate the answer
-                p_a = 1.0 / len(grid.actions[s])  # each action has equal probability
-                for a in grid.actions[s]:
-                    grid.set_state(s)
-                    r = grid.move(a)
-                    new_v += p_a * (r + gamma * V[grid.current_state()])
-                V[s] = new_v
-                biggest_change = max(biggest_change, np.abs(old_v - V[s]))
-        # print(biggest_change)
-        if biggest_change < SMALL_ENOUGH:
+    # be aware of the timing
+    # each triple is s(t), a(t), r(t)
+    # but r(t) results from taking action a(t-1) from s(t-1) and landing in s(t)
+    states_actions_rewards = [(s, a, 0)]
+    while True:
+        r, grid = grid.move(a)
+        s = grid.current_state()
+        if grid.game_over():
+            if grid.i_lost():
+                r -= 100
+            if grid.enemy_lost():
+                r += 100
+            states_actions_rewards.append((s, None, r))
             break
-        runs += 1
-    # print("values for uniformly random actions:")
-    print_values(V, grid)
-    # find a policy that leads to optimal value function
-    for s in policy.keys():
-        best_a = None
-        best_value = float('-inf')
-        # loop through all possible actions to find the best current action
-        for a in grid.actions[s]:
-            grid.set_state(s)
-            r = grid.move(a)
-            v = r + GAMMA * V[grid.current_state()]
-            if v > best_value:
-                best_value = v
-                best_a = a
-        policy[s] = best_a
+        else:
+            a = random_action(policy[s])  # the next state is stochastic
+            states_actions_rewards.append((s, a, r))
 
-    # our goal here is to verify that we get the same answer as with policy iteration
-    # print("values:")
-    # print_values(V, grid)
-    # print("policy:")
-    print_policy(policy, grid)
-    return policy
+    # calculate the returns by working backwards from the terminal state
+    G = 0
+    states_actions_returns = []
+    first = True
+    for s, a, r in reversed(states_actions_rewards):
+        # the value of the terminal state is 0 by definition
+        # we should ignore the first state we encounter
+        # and ignore the last G, which is meaningless since it doesn't correspond to any move
+        if first:
+            first = False
+        else:
+            states_actions_returns.append((s, a, G))
+        G = r + GAMMA * G
+    states_actions_returns.reverse()  # we want it to be in order of state visited
+    return states_actions_returns
 
 
 class Bot:
 
     def __init__(self, game):
         # self.game = game
-        grid = gameToGrid(game)
-        current_state = grid.current_state();
-        policy = gridToPolicy(grid)
-        self.next_move = policy[current_state]
+        grid = LRGrid(game.field_data, game.field_height, game.field_width, str(game.my_botid),
+                      str(game.other_botid))
+        # state -> action
+        # initialize a random policy
+        policy = {}
+        for s in grid.actions.keys():
+            policy[s] = np.random.choice(grid.actions[s])
+        # initialize Q(s,a) and returns
+        Q = {}
+        returns = {}  # dictionary of state -> list of returns we've received
+        states = grid.all_states()
+        for s in states:
+            if s in grid.actions:  # not a terminal state
+                Q[s] = {}
+                for a in ALL_POSSIBLE_ACTIONS:
+                    Q[s][a] = 0
+                    returns[(s, a)] = []
+            else:
+                # terminal state or state we can't otherwise get to
+                pass
+
+        deltas = []
+        for t in range(30):
+            # generate an episode using pi
+            biggest_change = 0
+            states_actions_returns = play_game(grid, policy)
+
+            # calculate Q(s,a)
+            seen_state_action_pairs = set()
+            for s, a, G in states_actions_returns:
+                # check if we have already seen s
+                # called "first-visit" MC policy evaluation
+                sa = (s, a)
+                if sa not in seen_state_action_pairs:
+                    old_q = Q[s][a]
+                    returns[sa].append(G)
+                    Q[s][a] = np.mean(returns[sa])
+                    biggest_change = max(biggest_change, np.abs(old_q - Q[s][a]))
+                    seen_state_action_pairs.add(sa)
+            deltas.append(biggest_change)
+
+            # calculate new policy pi(s) = argmax[a]{ Q(s,a) }
+            for s in policy.keys():
+                a, _ = max_dict(Q[s])
+                policy[s] = a
+
+        self.next_move = policy[grid.current_state()]
 
     def do_turn(self):
         return self.next_move

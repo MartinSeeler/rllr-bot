@@ -91,14 +91,14 @@ class Game():
                 current_line = sys.stdin.readline().rstrip('\r\n')
                 data += current_line + "\n"
                 if current_line.lower().startswith("update game field"):
-                    sys.stderr.write("UPDATE")
-                    sys.stderr.flush()
+                    #sys.stderr.write("UPDATE")
+                    #sys.stderr.flush()
                     self.update(data)
                     my_bot = Bot(self)
                     data = ''
                 elif current_line.lower().startswith("action move"):
-                    sys.stderr.write("ACTION")
-                    sys.stderr.flush()
+                    #sys.stderr.write("ACTION")
+                    #sys.stderr.flush()
                     self.update(data)
                     self.issue_order(my_bot.do_turn())
                     data = ''
