@@ -84,49 +84,84 @@ class Bot:
         # self.game = game
         grid = LRGrid(game.field_data, game.field_height, game.field_width, str(game.my_botid),
                       str(game.other_botid))
-        # state -> action
-        # initialize a random policy
-        policy = {}
-        for s in grid.actions.keys():
-            policy[s] = np.random.choice(grid.actions[s])
-        # initialize Q(s,a) and returns
+        # initialize Q(s,a)
         Q = {}
-        returns = {}  # dictionary of state -> list of returns we've received
         states = grid.all_states()
         for s in states:
-            if s in grid.actions:  # not a terminal state
-                Q[s] = {}
-                for a in ALL_POSSIBLE_ACTIONS:
-                    Q[s][a] = 0
-                    returns[(s, a)] = []
-            else:
-                # terminal state or state we can't otherwise get to
-                pass
+            Q[s] = {}
+            for a in ALL_POSSIBLE_ACTIONS:
+                Q[s][a] = 0
 
+        # let's also keep track of how many times Q[s] has been updated
+        update_counts = {}
+        update_counts_sa = {}
+        for s in states:
+            update_counts_sa[s] = {}
+            for a in ALL_POSSIBLE_ACTIONS:
+                update_counts_sa[s][a] = 1.0
+        # repeat until convergence
+        ALPHA = 0.1
+        t = 1.0
         deltas = []
-        for t in range(30):
-            # generate an episode using pi
-            biggest_change = 0
-            states_actions_returns = play_game(grid, policy)
+        for it in range(np.min([game.round, 25])):
+            my_grid = grid
+            if it % 3 == 0:
+                t += 1
+            # if it % 2000 == 0:
+            # print("it:", it)
 
-            # calculate Q(s,a)
-            seen_state_action_pairs = set()
-            for s, a, G in states_actions_returns:
-                # check if we have already seen s
-                # called "first-visit" MC policy evaluation
-                sa = (s, a)
-                if sa not in seen_state_action_pairs:
-                    old_q = Q[s][a]
-                    returns[sa].append(G)
-                    Q[s][a] = np.mean(returns[sa])
-                    biggest_change = max(biggest_change, np.abs(old_q - Q[s][a]))
-                    seen_state_action_pairs.add(sa)
+            # instead of 'generating' an epsiode, we will PLAY
+            # an episode within this loop
+            s = my_grid.current_state()  # start state
+
+            # the first (s, r) tuple is the state we start in and 0
+            # (since we don't get a reward) for simply starting the game
+            # the last (s, r) tuple is the terminal state and the final reward
+            # the value for the terminal state is by definition 0, so we don't
+            # care about updating it.
+            a, _ = max_dict(Q[s])
+            biggest_change = 0
+            while not my_grid.game_over():
+                a = random_action(a, eps=0.5 / t)  # epsilon-greedy
+                # random action also works, but slower since you can bump into walls
+                # a = np.random.choice(ALL_POSSIBLE_ACTIONS)
+                r, my_grid = my_grid.move(a)
+                if my_grid.i_lost():
+                    r -= 100
+                if my_grid.enemy_lost():
+                    r += 100
+                s2 = my_grid.current_state()
+
+                # adaptive learning rate
+                alpha = ALPHA / update_counts_sa[s][a]
+                update_counts_sa[s][a] += 0.005
+
+                # we will update Q(s,a) AS we experience the episode
+                old_qsa = Q[s][a]
+                # the difference between SARSA and Q-Learning is with Q-Learning
+                # we will use this max[a']{ Q(s',a')} in our update
+                # even if we do not end up taking this action in the next step
+                a2, max_q_s2a2 = max_dict(Q[s2])
+                Q[s][a] = Q[s][a] + alpha * (r + GAMMA * max_q_s2a2 - Q[s][a])
+                biggest_change = max(biggest_change, np.abs(old_qsa - Q[s][a]))
+
+                # we would like to know how often Q(s) has been updated too
+                update_counts[s] = update_counts.get(s, 0) + 1
+
+                # next state becomes current state
+                s = s2
+                a = a2
+
             deltas.append(biggest_change)
 
-            # calculate new policy pi(s) = argmax[a]{ Q(s,a) }
-            for s in policy.keys():
-                a, _ = max_dict(Q[s])
-                policy[s] = a
+        # determine the policy from Q*
+        # find V* from Q*
+        policy = {}
+        V = {}
+        for s in grid.actions.keys():
+            a, max_q = max_dict(Q[s])
+            policy[s] = a
+            V[s] = max_q
 
         self.next_move = policy[grid.current_state()]
 

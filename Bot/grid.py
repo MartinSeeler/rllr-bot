@@ -3,19 +3,21 @@ import numpy as np
 
 def get_valid_actions(field, x, y, rows, cols):
     possible_actions = []
-    if (x + 1) < rows and (field[x + 1, y] != 'x'):
+    if (x + 1) < rows and (field[x + 1, y] == '.'):
         possible_actions.append('down')
-    if (x - 1) >= 0 and (field[x - 1, y] != 'x'):
+    if (x - 1) >= 0 and (field[x - 1, y] == '.'):
         possible_actions.append('up')
-    if (y + 1) < cols and (field[x, y + 1] != 'x'):
+    if (y + 1) < cols and (field[x, y + 1] == '.'):
         possible_actions.append('right')
-    if (y - 1) >= 0 and (field[x, y - 1] != 'x'):
+    if (y - 1) >= 0 and (field[x, y - 1] == '.'):
         possible_actions.append('left')
     return possible_actions
 
 
-def get_reward(field, x, y):
-    return 0.1
+def get_reward(field, x, y, enemy_id):
+    if field[x,y] == 'x':
+        return -100
+    return 0.5
 
 
 class LRGrid:  # Environment
@@ -33,7 +35,7 @@ class LRGrid:  # Environment
         self.rewards = {}
         for x in range(self.rows):
             for y in range(self.cols):
-                self.rewards.update({(x, y): get_reward(self.field, x, y)})
+                self.rewards.update({(x, y): get_reward(self.field, x, y,  self.enemy_id)})
                 actions_valid = get_valid_actions(self.field, x, y, self.rows, self.cols)
                 if (len(actions_valid) > 0) and (self.field[x, y] in ['.', str(self.my_id), str(self.enemy_id)]):
                     self.actions.update({(x, y): actions_valid})
