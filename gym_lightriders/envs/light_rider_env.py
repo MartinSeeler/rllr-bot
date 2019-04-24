@@ -125,6 +125,9 @@ class LightRidersEnv(gym.Env):
         else:
             return pos
 
+    def _is_action_possible(self, position, action):
+        return not self._is_loosing_position(self._update_pos(position, action))
+
     def take_action(self, action):
         """
         0 == UP
@@ -132,12 +135,38 @@ class LightRidersEnv(gym.Env):
         2 == LEFT
         3 == RIGHT
         """
+        all_actions = [0, 1, 2, 3]
         if self.me_first:
             # set current position to wall
             self.grid[self.p0_position[0], self.p0_position[1]] = 1
             # update my position based on action
             self.p0_position = self._update_pos(self.p0_position, action)
+
+            # calculate enemy move
+            valid_enemy_actions = list(filter(lambda x: self._is_action_possible(self.p1_position
+                                                                                 , x), all_actions))
+            enemy_action = np.random.choice(all_actions)
+            if len(valid_enemy_actions) > 0:
+                enemy_action = np.random.choice(valid_enemy_actions)
+
+            # set current enemy position to wall
+            self.grid[self.p1_position[0], self.p1_position[1]] = 1
+            # update my position based on action
+            self.p1_position = self._update_pos(self.p1_position, enemy_action)
         else:
+
+            # calculate enemy move
+            valid_enemy_actions = list(filter(lambda x: self._is_action_possible(self.p0_position
+                                                                                 , x), all_actions))
+            enemy_action = np.random.choice(all_actions)
+            if len(valid_enemy_actions) > 0:
+                enemy_action = np.random.choice(valid_enemy_actions)
+
+            # set current enemy position to wall
+            self.grid[self.p0_position[0], self.p0_position[1]] = 1
+            # update my position based on action
+            self.p0_position = self._update_pos(self.p0_position, enemy_action)
+
             # set current position to wall
             self.grid[self.p1_position[0], self.p1_position[1]] = 1
             # update my position based on action
