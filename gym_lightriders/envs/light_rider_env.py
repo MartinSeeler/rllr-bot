@@ -47,6 +47,22 @@ class LightRidersEnv(gym.Env):
             obs[self.p1_position[0], self.p1_position[1]] = 3 if self.me_first else 2
         return np.append(np.array([0 if self.me_first else 1]), obs.reshape(-1))
 
+    def render(self, mode='human', close=False):
+        g = self._get_obs()[1:].reshape(self.rows, self.cols)
+        for i in range(self.rows):
+            print("---" * self.cols)
+            for j in range(self.cols):
+                a = g[i, j]
+                c = '.'
+                if a == 1:
+                    c = 'x'
+                elif a == 2:
+                    c = 'u'
+                elif a == 3:
+                    c = 'e'
+                print(c.upper().center(3), end="")
+            print("")
+
     def reset(self):
         self.grid = np.zeros((self.rows, self.cols))
         p0_start_x = np.random.randint(1, self.rows - 1)
@@ -54,6 +70,8 @@ class LightRidersEnv(gym.Env):
         self.p0_position = [p0_start_x, p0_start_y]
         self.p1_position = [p0_start_x, self.cols - 1 - p0_start_y]
         self.me_first = np.random.rand() <= 0.5
+
+        print(self.me_first)
 
     def step(self, action):
         """
@@ -90,22 +108,6 @@ class LightRidersEnv(gym.Env):
         ob = self._get_obs()
         episode_over = self._is_loosing_position(self.p0_position) or self._is_loosing_position(self.p1_position)
         return ob, reward, episode_over, {}
-
-    def render(self, mode='human', close=False):
-        g = self._get_obs()[1:].reshape(self.rows, self.cols)
-        for i in range(self.rows):
-            print("---" * self.cols)
-            for j in range(self.cols):
-                a = g[i, j]
-                c = '.'
-                if a == 1:
-                    c = 'x'
-                elif a == 2:
-                    c = 'u' if self.me_first else 'e'
-                elif a == 3:
-                    c = 'e' if self.me_first else 'u'
-                print(c.upper().center(3), end="")
-            print("")
 
     def _update_pos(self, pos, action):
         if action == 0:
